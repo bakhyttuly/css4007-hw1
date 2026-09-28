@@ -1,14 +1,8 @@
-"""Sublab Medium - one Kazakh-correction task, six models.
-
-Six models, one prompt, eight sentences. What you are producing is evidence:
-a table that says which models repaired which kind of damage, and what each one
-charged you for the attempt.
-
-Fill in every `TODO`. Keep the function signatures.
-"""
+"""Sublab Medium - one Kazakh-correction task, six models."""
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -19,7 +13,6 @@ from sublab_easy.registration_bot import (RATES_PER_MTOK,  # noqa: E402
 
 DATA = Path(__file__).resolve().parent.parent / "data" / "kazakh_errors.json"
 
-# Every model you must run. Keep the order - it is the order of your table.
 MODELS = [
     ("openrouter", "google/gemma-4-26b-a4b-it:free"),
     ("openrouter", "qwen/qwen3.8-27b"),
@@ -31,77 +24,76 @@ MODELS = [
 
 
 def load_sentences() -> list[dict]:
-    """The eight corrupted sentences and their published originals."""
     return json.loads(DATA.read_text(encoding="utf-8"))["sentences"]
 
 
 def build_prompt(corrupted: str) -> str:
-    """Ask for a corrected sentence AND a list of the changes made.
-
-    Requirements:
-      - state that the text is Kazakh and may contain wrong letters, joined
-        words, or letters from the wrong alphabet;
-      - demand exactly this JSON and nothing else:
-            {"corrected": "...", "changes": ["...", "..."]}
-      - do not include the correct answer in the prompt. You are testing the
-        model, not your own typing.
-
-    Asking for a fixed shape instead of prose is how you make six models
-    comparable. Week 3 turns this into a topic.
-    """
-    # TODO
-    raise NotImplementedError
+    return (
+        "The following text is Kazakh, but it has been damaged. It may contain "
+        "letters swapped for the wrong alphabet (Cyrillic letters replaced by "
+        "visually identical Latin letters), Kazakh-specific letters replaced by "
+        "their Russian lookalikes, two words welded together with a missing "
+        "space, a missing hyphen, or a doubled letter.\n\n"
+        "Text:\n"
+        "%s\n\n"
+        "Fix the text and reply with EXACTLY this JSON object and nothing else "
+        "- no explanation, no markdown fence, no extra text:\n"
+        '{"corrected": "...", "changes": ["...", "..."]}\n\n'
+        '"corrected" is the fixed Kazakh sentence. "changes" is a short list '
+        "of what you changed (e.g. \"replaced Latin c with Cyrillic с\", "
+        "\"joined words split apart\")." % corrupted
+    )
 
 
 def parse_response(text: str) -> dict:
-    """Pull {"corrected": str, "changes": list} out of the model's reply.
+    candidate = text.strip()
 
-    Models wrap JSON in prose, or in ```json fences, more often than you would
-    like. Be forgiving: find the JSON, parse it, and raise ValueError with the
-    offending text if you truly cannot.
-    """
-    # TODO
-    raise NotImplementedError
+    fence = re.search(r"```(?:json)?\s*(.*?)\s*```", candidate, re.DOTALL)
+    if fence:
+        candidate = fence.group(1).strip()
+
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        pass
+
+    brace_match = re.search(r"\{.*\}", candidate, re.DOTALL)
+    if brace_match:
+        try:
+            return json.loads(brace_match.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    raise ValueError("no JSON object found in model response: %r" % text)
 
 
 def correct_with(model: str, corrupted: str, via: str) -> dict:
-    """Send one sentence to one model.
-
-    Returns:
-        {"corrected": str, "changes": list, "input_tokens": int,
-         "output_tokens": int, "model": str}
-
-    `via` is "openai" or "openrouter" and goes straight through to
-    `ask_once` from sublab_easy - there is no conversation here, just one
-    prompt and one reply, eight times per model.
-    """
-    # TODO
-    raise NotImplementedError
+    result = ask_once(build_prompt(corrupted), model=model, via=via)
+    parsed = parse_response(result["text"])
+    return {
+        "corrected": parsed["corrected"],
+        "changes": parsed["changes"],
+        "input_tokens": result["input_tokens"],
+        "output_tokens": result["output_tokens"],
+        "model": model,
+    }
 
 
 def score_correction(returned: str, expected: str) -> dict:
-    """Compare a model's output against the published original.
-
-    Returns {"exact": bool, "char_diff": int} where char_diff is the number of
-    differing characters (a simple positional comparison is enough; count the
-    length difference too).
-
-    READ THIS: `exact` is a signal, not a grade. Good Kazakh that differs from
-    the original still counts as a correction. Your written analysis is where
-    you make that call.
-    """
-    # TODO
-    raise NotImplementedError
+    exact = returned == expected
+    common = min(len(returned), len(expected))
+    mismatches = sum(1 for a, b in zip(returned[:common], expected[:common]) if a != b)
+    char_diff = mismatches + abs(len(returned) - len(expected))
+    return {"exact": exact, "char_diff": char_diff}
 
 
 def run_all() -> list[dict]:
-    """Every model against every sentence. One row per (model, sentence)."""
     rows = []
     for via, model in MODELS:
         for s in load_sentences():
             try:
                 r = correct_with(model, s["corrupted"], via)
-            except Exception as exc:            # a model failing IS a result
+            except Exception as exc:
                 rows.append({"model": model, "id": s["id"],
                              "errors": s["errors"], "failed": repr(exc)})
                 continue
@@ -122,7 +114,6 @@ def run_all() -> list[dict]:
 
 
 def summarise(rows: list[dict]) -> None:
-    """Per-model totals, to paste into SUBMISSION.md."""
     print(f"{'model':38}{'exact':>7}{'failed':>8}{'tokens':>9}{'cost $':>10}")
     print("-" * 72)
     for _, model in MODELS:
