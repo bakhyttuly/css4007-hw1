@@ -18,11 +18,11 @@ is not.
 
 **How I laid the catalogue out inside the system prompt, and why:**
 
->
+> Order: student (year, completed courses), rules (credit limits, no full / completed / clashing courses), then all 8 courses one per line (credits, prerequisites, schedule, seats left), then a final rule: this is the full list, never invent a course. Seats left are computed in code so the model does not have to subtract.
 
 **My turn 5 (Kazakh or Russian):**
 
->
+> Мен үшінші курс студентімін. Мен әлі қандай курстарға тіркеле аламын?
 
 ### Run 1 — OpenAI, `gpt-5.6-luna`
 
@@ -68,24 +68,24 @@ No such course exists in the catalogue.
 **1. The two providers used almost identical code. What actually changed, and
 what did not?**
 
-> Only the `base_url` changed. `openrouter_client()` creates the same `OpenAI` client but with `base_url=https://openrouter.ai/api/v1` and the OpenRouter key. Everything else stays the same: the message format, the `chat()` call, and reading `choices[0].message.content` and `usage`. OpenRouter uses the same API format as OpenAI, so one URL and one key were enough to reach a different model.
+> Only `base_url` and the API key changed. The client class, message format and how I read the reply and `usage` are the same.
 
 **2. Why did the input token count climb on every turn when your questions
 stayed roughly the same length? Use the numbers from your own table. What
 happens to the bill at fifty turns?**
 
-> The API does not remember anything, so every call sends the system prompt plus the whole conversation so far. That is why input tokens grew 752 → 1077 → 1160 → 1248 → 1313 even though my questions were short. Each new turn pays again for all the old turns, so the total cost grows much faster than the number of turns. At fifty turns the last call alone would be several thousand input tokens, and the whole conversation would cost far more than fifty separate questions.
+> Input tokens grew 752 → 1077 → 1160 → 1248 → 1313 because every call resends the whole conversation. At fifty turns each call would be thousands of tokens and the total cost would grow much faster than the number of turns.
 
 **3. Turn 4: did the bot refuse, or did it invent CSS-4090?** If it refused, what
 in your system prompt held the line? If it invented, what did it make up —
 credits, a room, an instructor?
 
-> Both refused. OpenAI: "I can't add CSS-4090 Quantum Machine Learning because it does not exist in the provided ... catalogue." OpenRouter: "No such course exists in the catalogue." What held the line was the last paragraph of my system prompt: the catalogue is the full list of courses, and the bot must refuse and never invent a course, credits, schedule or instructor. Neither bot made anything up.
+> Both refused, nothing was invented. The final rule in my system prompt (full list, never invent) held the line.
 
 **4. Where else was either bot wrong?** Turn 2 asks for two courses that meet at
 the same hour; two courses in the catalogue are full. Did the bots notice?
 
-> Yes. `gpt-5.6-luna` showed some of its internal reasoning text in the turn 1 answer. `gemma` in turn 1 offered `ECN-2101` as a course I could take, but I have already completed it, and the rules say you cannot register for a completed course.
+> gemma offered `ECN-2101`, which the student has already completed. luna showed part of its internal reasoning in the turn 1 answer.
 
 ---
 
@@ -117,16 +117,16 @@ Rows are error labels, columns are models. Write "yes", "no" or "partial".
 **The `latin_homoglyph` row: what happened?** Describe what you observed. The
 explanation is Sublab Harder's job, not this one's.
 
-> deepseek, luna, terra and sol fixed both homoglyph sentences (KZ-03, KZ-08). gemma fixed only one of them. qwen fixed nothing, but qwen failed every sentence, so this says nothing specific about homoglyphs. So most models still recovered the right Kazakh word even though the Latin letters look identical to the Cyrillic ones.
+> deepseek, luna, terra and sol fixed both homoglyph sentences (KZ-03, KZ-08). gemma fixed 1 of 2. qwen returned no answers at all.
 
 **Where a model returned good Kazakh that was not identical to the original,
 say so here.** Exact match is not correctness.
 
-> KZ-01 (`kaz_to_rus`): deepseek and luna matched the original exactly, but gemma, terra and sol did not. Three different models giving a different answer to the same sentence suggests a valid alternative correction (different word choice) rather than broken Kazakh. I would need to read their outputs in `outputs/corrections.json` to be sure.
+> KZ-01: deepseek and luna matched exactly; gemma, terra and sol did not. Three models differing the same way suggests a valid alternative correction, not an error.
 
 **Cheapest model that was good enough, and why:**
 
-> deepseek: 8/8 exact for $0.00385. luna was slightly cheaper ($0.00358) but got 7/8, and free gemma got only 5/8. terra and sol cost 6–13 times more than deepseek and got only 6/8, so the most expensive models were not the most accurate here.
+> deepseek: 8/8 for $0.00385. terra and sol cost 6–12× more and got 6/8.
 
 ---
 
@@ -185,17 +185,17 @@ corrupted: ['Д', 'o', 'н', 'a', 'л', 'ль']
 **1. What is the Kazakh tax?** The ratio against English in both encodings, the
 dollar figure from A, and how much it changed between the two tokenizers.
 
-> In `cl100k_base` Kazakh costs 3.75× English (0.760 vs 0.203 tokens per character), or $0.1666 vs $0.0492 per 1,000 sentences. In `o200k_base` it is 1.58× ($0.0699 vs $0.0492). The newer tokenizer cut the Kazakh cost by 58%, but Kazakh is still about 58% more expensive than English.
+> Kazakh costs 3.75× English in `cl100k_base` ($0.1666 vs $0.0492 per 1,000 sentences) and 1.58× in `o200k_base` ($0.0699). The new tokenizer cut it by 58%.
 
 **2. Why did the models repair `kaz_to_rus` but struggle with
 `latin_homoglyph`?** Both are single-letter substitutions and both look almost
 identical on screen. Use your token streams from B as the evidence. Say what the
 model actually received in each case.
 
-> The model does not see letters, it sees tokens. In `kaz_to_rus` the letters stay Cyrillic, so the text becomes normal-looking Cyrillic tokens, like a common misspelling the model has seen many times. In `latin_homoglyph` a Latin letter replaces a Cyrillic one, which is a different byte and so a different token. The token streams split right away: KZ-03 differs at token 0 (`['A', 'л', 'a', 'я', 'қ']` vs `['А', 'лая', 'қ', 'тарға', ' ақша']`), KZ-08 at token 1. The model receives rare, broken pieces instead of a familiar word.
+> The model sees tokens, not letters. `kaz_to_rus` keeps the text Cyrillic, like a normal typo. A Latin letter is a different token: KZ-03 splits from token 0 (`А | лая` → `A | л | a | я`), 16 → 20 tokens.
 
 **3. Name one thing this measurement does not explain about your Sublab Medium
 results.** You measured OpenAI's tokenizers; three of your six models were not
 OpenAI's. What follows, and what would you have to do to close the gap?
 
-> I only measured OpenAI's tokenizers, but gemma, qwen and deepseek use their own tokenizers. So these numbers do not explain their results, for example why gemma fixed only one homoglyph sentence. To check, I would need to load each model's own tokenizer and repeat the same measurements.
+> I measured only OpenAI tokenizers; gemma, qwen and deepseek use their own. To explain their results I would need to repeat the measurements with each model's tokenizer.
