@@ -18,7 +18,7 @@ is not.
 
 **How I laid the catalogue out inside the system prompt, and why:**
 
-> Order: student (year, completed courses), rules (credit limits, no full / completed / clashing courses), then all 8 courses one per line (credits, prerequisites, schedule, seats left), then a final rule: this is the full list, never invent a course. Seats left are computed in code so the model does not have to subtract.
+> Student → rules → 8 courses, one per line (credits, prerequisites, schedule, seats left) → rule: never invent a course.
 
 **My turn 5 (Kazakh or Russian):**
 
@@ -68,24 +68,24 @@ No such course exists in the catalogue.
 **1. The two providers used almost identical code. What actually changed, and
 what did not?**
 
-> Only `base_url` and the API key changed. The client class, message format and how I read the reply and `usage` are the same.
+> Changed: `base_url` and API key. Same: everything else.
 
 **2. Why did the input token count climb on every turn when your questions
 stayed roughly the same length? Use the numbers from your own table. What
 happens to the bill at fifty turns?**
 
-> Input tokens grew 752 → 1077 → 1160 → 1248 → 1313 because every call resends the whole conversation. At fifty turns each call would be thousands of tokens and the total cost would grow much faster than the number of turns.
+> 752 → 1077 → 1160 → 1248 → 1313. The whole conversation is resent every turn. At fifty turns: thousands of tokens per call.
 
 **3. Turn 4: did the bot refuse, or did it invent CSS-4090?** If it refused, what
 in your system prompt held the line? If it invented, what did it make up —
 credits, a room, an instructor?
 
-> Both refused, nothing was invented. The final rule in my system prompt (full list, never invent) held the line.
+> Both refused. Nothing invented.
 
 **4. Where else was either bot wrong?** Turn 2 asks for two courses that meet at
 the same hour; two courses in the catalogue are full. Did the bots notice?
 
-> gemma offered `ECN-2101`, which the student has already completed. luna showed part of its internal reasoning in the turn 1 answer.
+> gemma offered `ECN-2101` (already completed). luna showed internal reasoning in turn 1.
 
 ---
 
@@ -117,16 +117,16 @@ Rows are error labels, columns are models. Write "yes", "no" or "partial".
 **The `latin_homoglyph` row: what happened?** Describe what you observed. The
 explanation is Sublab Harder's job, not this one's.
 
-> deepseek, luna, terra and sol fixed both homoglyph sentences (KZ-03, KZ-08). gemma fixed 1 of 2. qwen returned no answers at all.
+> Fixed both: deepseek, luna, terra, sol. gemma: 1 of 2. qwen: no answers.
 
 **Where a model returned good Kazakh that was not identical to the original,
 say so here.** Exact match is not correctness.
 
-> KZ-01: deepseek and luna matched exactly; gemma, terra and sol did not. Three models differing the same way suggests a valid alternative correction, not an error.
+> KZ-01: exact for deepseek and luna; gemma, terra and sol gave a different version.
 
 **Cheapest model that was good enough, and why:**
 
-> deepseek: 8/8 for $0.00385. terra and sol cost 6–12× more and got 6/8.
+> deepseek: 8/8, $0.00385.
 
 ---
 
@@ -185,17 +185,17 @@ corrupted: ['Д', 'o', 'н', 'a', 'л', 'ль']
 **1. What is the Kazakh tax?** The ratio against English in both encodings, the
 dollar figure from A, and how much it changed between the two tokenizers.
 
-> Kazakh costs 3.75× English in `cl100k_base` ($0.1666 vs $0.0492 per 1,000 sentences) and 1.58× in `o200k_base` ($0.0699). The new tokenizer cut it by 58%.
+> cl100k: 3.75× English, $0.1666 vs $0.0492 per 1,000 sentences. o200k: 1.58×, $0.0699. Change: −58%.
 
 **2. Why did the models repair `kaz_to_rus` but struggle with
 `latin_homoglyph`?** Both are single-letter substitutions and both look almost
 identical on screen. Use your token streams from B as the evidence. Say what the
 model actually received in each case.
 
-> The model sees tokens, not letters. `kaz_to_rus` keeps the text Cyrillic, like a normal typo. A Latin letter is a different token: KZ-03 splits from token 0 (`А | лая` → `A | л | a | я`), 16 → 20 tokens.
+> `kaz_to_rus` stays Cyrillic. Latin letters change the tokens from the start: KZ-03 `А | лая` → `A | л | a | я`, 16 → 20 tokens; KZ-08 splits at token 1, 21 → 24.
 
 **3. Name one thing this measurement does not explain about your Sublab Medium
 results.** You measured OpenAI's tokenizers; three of your six models were not
 OpenAI's. What follows, and what would you have to do to close the gap?
 
-> I measured only OpenAI tokenizers; gemma, qwen and deepseek use their own. To explain their results I would need to repeat the measurements with each model's tokenizer.
+> Only OpenAI tokenizers were measured. gemma, qwen and deepseek need their own tokenizers checked.
